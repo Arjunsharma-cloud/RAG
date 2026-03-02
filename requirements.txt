@@ -8,3 +8,4 @@ aiohttp
 pyyaml
 python-dotenv
 emoji
+nltk

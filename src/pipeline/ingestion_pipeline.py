@@ -4,7 +4,9 @@ from pathlib import Path
 from datetime import datetime
 
 from ..core.models.document import Document, DocumentType, ProcessingStatus
-from ..processors import PDFProcessor, CSVProcessor
+# ❌ REMOVE these imports - they cause circular import
+# from ..processors import PDFProcessor, CSVProcessor  
+
 from ..services.embedding.bge_service import BGEEmbeddingService
 from ..services.vector_store.chroma_service import ChromaService
 from ..utils.logger import get_logger
@@ -17,8 +19,8 @@ class IngestionPipeline:
         self,
         embedding_service: BGEEmbeddingService,
         vector_store: ChromaService,
-        pdf_processor: PDFProcessor,
-        csv_processor: CSVProcessor,
+        pdf_processor,  # Remove type hint to avoid import
+        csv_processor,  # Remove type hint to avoid import
         batch_size: int = 32
     ):
         self.embedding_service = embedding_service
@@ -29,6 +31,7 @@ class IngestionPipeline:
         }
         self.batch_size = batch_size
     
+    # Rest of the class remains the same...
     async def process_document(self, file_path: str, doc_type: DocumentType) -> Document:
         """Process a single document through the pipeline"""
         document = Document(type=doc_type, source_path=file_path)

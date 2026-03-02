@@ -3,7 +3,8 @@ import pandas as pd
 from pathlib import Path
 from typing import AsyncGenerator
 from ..core.interfaces.document_processor import DocumentProcessor
-from ..core.models.document import Document, Chunk, ProcessingStatus
+from ..core.models.document import Document,  ProcessingStatus
+from ..core.models.chunk import Chunk
 from ..pipeline.chunking.base_chunker import BaseChunker
 from ..utils.logger import get_logger
 

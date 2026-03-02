@@ -4,7 +4,7 @@ from ..services.vector_store.chroma_service import ChromaService
 from ..services.llm.ollama_service import OllamaService
 from ..services.memory.session_memory import SessionMemory
 from ..services.reranker.bge_reranker import BGEReranker
-from ..core.models.conversation import Conversation, Message  # Explicit imports
+from ..core.models.conversation import Conversation, Message
 from ..core.models.chunk import Chunk
 from ..utils.logger import get_logger
 from ..utils.text_normalizer import TextNormalizer
@@ -35,19 +35,26 @@ class QueryPipeline:
                     filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process a query through the pipeline"""
         
+        logger.info(f"Processing query: '{user_query[:50]}...' for session: {session_id}")
+        
         # Normalize query
         user_query = self.normalizer.normalize(user_query)
         
-        # Get conversation history - returns Conversation object or None
-        conversation: Optional[Conversation] = await self.memory_store.get_conversation(session_id)
+        # Get conversation history
+        conversation = await self.memory_store.get_conversation(session_id)
+        logger.debug(f"Retrieved conversation with {len(conversation.messages) if conversation else 0} messages")
         
         # Enhance query with conversation context if needed
         enhanced_query = await self._enhance_query(user_query, conversation)
+        logger.debug(f"Enhanced query: {enhanced_query[:100]}...")
         
         # Generate query embedding
+        logger.info("Generating query embedding...")
         query_embedding = await self.embedding_service.embed_query(enhanced_query)
+        logger.debug(f"Query embedding generated with dimension: {len(query_embedding)}")
         
         # Search for relevant chunks
+        logger.info(f"Searching for relevant chunks (hybrid={self.use_hybrid_search})...")
         if self.use_hybrid_search:
             chunks_with_scores = await self.vector_store.hybrid_search(
                 query=enhanced_query,
@@ -60,48 +67,68 @@ class QueryPipeline:
                 query_embedding, self.top_k * 2, filter=filters
             )
         
+        logger.info(f"Found {len(chunks_with_scores)} chunks from search")
+        
         # Extract chunks from tuples
         chunks = [chunk for chunk, _ in chunks_with_scores]
         
         # Rerank if available
         if self.reranker and chunks:
+            logger.info(f"Reranking {len(chunks)} chunks...")
             chunks = await self.reranker.rerank(enhanced_query, chunks, self.top_k)
+            logger.info(f"Reranking complete, kept {len(chunks)} chunks")
         else:
             chunks = chunks[:self.top_k]
+            logger.info(f"Using top {len(chunks)} chunks without reranking")
         
-        # Prepare context from chunks
-        context = self._prepare_context(chunks)
-        
-        # Generate response
-        prompt = self._build_prompt(user_query, context, conversation)
-        response = await self.llm_service.generate(prompt)
+        if not chunks:
+            logger.warning("No relevant chunks found!")
+            response = "I couldn't find any relevant information in the documents to answer your question."
+        else:
+            # Prepare context from chunks
+            context = self._prepare_context(chunks)
+            logger.debug(f"Context prepared with {len(context)} characters")
+            
+            # Generate response
+            logger.info("Generating LLM response...")
+            prompt = self._build_prompt(user_query, context, conversation)
+            logger.debug(f"Prompt built with {len(prompt)} characters")
+            
+            try:
+                response = await self.llm_service.generate(prompt)
+                logger.info(f"LLM response generated: {len(response)} characters")
+                logger.debug(f"Response preview: {response[:200]}...")
+            except Exception as e:
+                logger.error(f"LLM generation failed: {e}")
+                response = f"Error generating response: {e}"
         
         # Save to memory
+        logger.info("Saving conversation to memory...")
         await self.memory_store.add_message(
             session_id, 
             Message(role="user", content=user_query)
         )
         await self.memory_store.add_message(
             session_id, 
-            Message(role="assistant", content=response, metadata={"sources": [c.to_dict() for c in chunks]})
+            Message(role="assistant", content=response, 
+                   metadata={"sources": [c.to_dict() for c in chunks]})
         )
         
-        return {
+        result = {
             "answer": response,
             "sources": [self._format_source(c) for c in chunks],
             "conversation_id": session_id
         }
+        
+        logger.info("Query processing complete!")
+        return result
     
     async def _enhance_query(self, query: str, conversation: Optional[Conversation]) -> str:
         """Enhance query with conversation context if needed"""
-        # Check if we have a conversation with messages
         if conversation is None:
             return query
         
-        # Get the messages list from conversation
-        messages: List[Message] = conversation.messages
-        
-        # Need at least 2 messages for context (user + assistant)
+        messages = conversation.messages
         if len(messages) < 2:
             return query
         
@@ -110,15 +137,11 @@ class QueryPipeline:
                           for word in ['it', 'this', 'that', 'they', 'them', 'the above', 'previous', 'above'])
         
         if needs_context:
-            # Get last 2 messages (last exchange)
-            last_messages: List[Message] = messages[-2:]
-            
-            # Build context string
+            last_messages = messages[-2:]
             context_parts = []
             for msg in last_messages:
                 role_prefix = "Human" if msg.role == "user" else "Assistant"
                 context_parts.append(f"{role_prefix}: {msg.content}")
-            
             context = "\n".join(context_parts)
             return f"Previous conversation:\n{context}\n\nCurrent question: {query}"
         
@@ -147,12 +170,10 @@ say so clearly. Cite your sources using [Source X] notation."""
         # Add conversation history if available
         history = ""
         if conversation is not None:
-            messages: List[Message] = conversation.messages
+            messages = conversation.messages
             if len(messages) > 2:
-                # Get messages before the last exchange (for context)
-                # We want the exchange before the current one
                 if len(messages) >= 4:
-                    recent = messages[-4:-2]  # Gets the exchange before last
+                    recent = messages[-4:-2]
                     if recent:
                         history_parts = ["Previous conversation:"]
                         for msg in recent:
@@ -160,7 +181,6 @@ say so clearly. Cite your sources using [Source X] notation."""
                             history_parts.append(f"{role_prefix}: {msg.content}")
                         history = "\n".join(history_parts) + "\n\n"
         
-        # Build the full prompt
         prompt = f"""{system_prompt}
 
 {history}Context:

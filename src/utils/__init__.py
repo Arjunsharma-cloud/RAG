@@ -1,51 +1,49 @@
 """
-Utils Module
-
-Provides shared utilities for:
-- Logging
-- Exception handling
-- Text normalization
-- Async helpers
-
-This module defines the public API surface for utils.
+Utility modules for the Multimodal RAG System.
+Provides logging, exception handling, text normalization, and helper functions.
 """
 
-# Logging
 from .logger import setup_logger, get_logger
-
-# Custom Exceptions
 from .exceptions import (
-    RAGException,
-    ProcessingError,
-    EmbeddingError,
-    VectorStoreError,
+    RAGException, 
+    ConfigurationError,
+    ProcessingError, 
+    EmbeddingError, 
+    VectorStoreError, 
     LLMError,
+
+)
+from .text_normalizer import TextNormalizer
+from .async_utils import (  # Now this import will work!
+    async_timed,
+    gather_with_concurrency,
+    run_async_in_thread,
+    AsyncTaskManager,
+    run_parallel,
+    create_task
 )
 
-# Text Utilities
-from .text_normalizer import TextNormalizer
-
-# Async Utilities (if present)
-from .async_utils import run_async, gather_with_concurrency
-
-
-# Explicit public API
 __all__ = [
     # Logging
-    "setup_logger",
-    "get_logger",
-
+    'setup_logger',
+    'get_logger',
+    
     # Exceptions
-    "RAGException",
-    "ProcessingError",
-    "EmbeddingError",
-    "VectorStoreError",
-    "LLMError",
-
-    # Text
-    "TextNormalizer",
-
-    # Async
-    "run_async",
-    "gather_with_concurrency",
+    'RAGException',
+    'ConfigurationError',
+    'ProcessingError',
+    'EmbeddingError',
+    'VectorStoreError',
+    'LLMError',
+    
+    # Text Processing
+    'TextNormalizer',
+    
+    # Async Utilities
+    'async_timed',
+    'gather_with_concurrency',
+    'run_async_in_thread',
+    'AsyncTaskManager',
+    'run_parallel',
+    'create_task'
 ]

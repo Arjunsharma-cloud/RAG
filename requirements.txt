@@ -10,3 +10,4 @@ python-dotenv
 emoji
 nltk
 rank-bm25
+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

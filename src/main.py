@@ -8,6 +8,7 @@ from .processors import PDFProcessor, CSVProcessor
 from .services.embedding.bge_service import BGEEmbeddingService
 from .services.vector_store.chroma_service import ChromaService
 from .services.llm.ollama_service import OllamaService
+from .services.llm.openrouter_service import OpenRouterService
 from .services.memory.session_memory import SessionMemory
 from .services.reranker.bge_reranker import BGEReranker
 from .pipeline.ingestion_pipeline import IngestionPipeline
@@ -28,8 +29,10 @@ class MultimodalRAGSystem:
         self.llm_service = None
         self.memory_store = None
         self.reranker = None
-        self.ingestion = None
-        self.query = None
+        self.ingestion_pipeline = None
+        self.query_pipeline = None
+        self.pdf_processor = None
+        self.csv_processor = None
     
     async def initialize(self):
         """Initialize all components"""
@@ -48,11 +51,27 @@ class MultimodalRAGSystem:
             self.vector_store = ChromaService(str(self.config.CHROMA_DIR))
             await self.vector_store.initialize()
             
-            # Initialize LLM service
-            self.llm_service = OllamaService(
-                model=self.config.LLM_MODEL,
-                base_url=self.config.LLM_BASE_URL
-            )
+            # Initialize LLM service based on provider
+            if self.config.LLM_PROVIDER == "openrouter":
+                if not self.config.OPENROUTER_API_KEY:
+                    raise ConfigurationError("OPENROUTER_API_KEY is required for OpenRouter provider")
+                
+                logger.info(f"Using OpenRouter with model: {self.config.OPENROUTER_MODEL}")
+                self.llm_service = OpenRouterService(
+                    api_key=self.config.OPENROUTER_API_KEY,
+                    model=self.config.OPENROUTER_MODEL,
+                    base_url=self.config.OPENROUTER_BASE_URL,
+                    temperature=self.config.LLM_TEMPERATURE,
+                    max_tokens=self.config.LLM_MAX_TOKENS,
+                    site_url=self.config.OPENROUTER_SITE_URL,
+                    site_name=self.config.OPENROUTER_SITE_NAME
+                )
+            else:
+                logger.info(f"Using Ollama with model: {self.config.LLM_MODEL}")
+                self.llm_service = OllamaService(
+                    model=self.config.LLM_MODEL,
+                    base_url=self.config.LLM_BASE_URL
+                )
             
             # Initialize memory store
             self.memory_store = SessionMemory(
@@ -86,7 +105,7 @@ class MultimodalRAGSystem:
             self.csv_processor = CSVProcessor(chunker)
             
             # Create pipelines
-            self.ingestion = IngestionPipeline(
+            self.ingestion_pipeline = IngestionPipeline(
                 self.embedding_service,
                 self.vector_store,
                 self.pdf_processor,
@@ -94,7 +113,7 @@ class MultimodalRAGSystem:
                 batch_size=self.config.BATCH_SIZE
             )
             
-            self.query = QueryPipeline(
+            self.query_pipeline = QueryPipeline(
                 self.embedding_service,
                 self.vector_store,
                 self.llm_service,
@@ -128,20 +147,20 @@ class MultimodalRAGSystem:
         else:
             raise ValueError(f"Unsupported file type: {path.suffix}")
         
-        return await self.ingestion.process_document(file_path, doc_type)
+        return await self.ingestion_pipeline.process_document(file_path, doc_type)
     
     async def process_directory(self, directory: str) -> Dict[str, List[Document]]:
         """Process all documents in a directory"""
         if not self.initialized:
             await self.initialize()
-        return await self.ingestion.process_directory(directory)
+        return await self.ingestion_pipeline.process_directory(directory)
     
     async def query(self, user_query: str, session_id: str = "default",
                    filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Query the system"""
         if not self.initialized:
             await self.initialize()
-        return await self.query.query(user_query, session_id, filters)
+        return await self.query_pipeline.query(user_query, session_id, filters)
     
     async def get_conversation_history(self, session_id: str):
         """Get conversation history"""
@@ -159,7 +178,8 @@ class MultimodalRAGSystem:
         """Get system information"""
         return {
             'embedding_model': self.config.EMBEDDING_MODEL,
-            'llm_model': self.config.LLM_MODEL,
+            'llm_model': self.config.LLM_MODEL if self.config.LLM_PROVIDER == 'ollama' else self.config.OPENROUTER_MODEL,
+            'llm_provider': self.config.LLM_PROVIDER,
             'chunk_size': self.config.CHUNK_SIZE,
             'chunking_strategy': self.config.CHUNKING_STRATEGY,
             'reranker_enabled': self.reranker is not None,
@@ -171,5 +191,3 @@ class MultimodalRAGSystem:
         if self.llm_service:
             await self.llm_service.close()
         logger.info("System shutdown")
-
-# Create __init__.py for src

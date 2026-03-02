@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator
-from ..models.document import Document, Chunk
+from ..models.document import Document
+from ..models.chunk import Chunk
 
 class DocumentProcessor(ABC):
     """Contract: Any document processor MUST do these things"""

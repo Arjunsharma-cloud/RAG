@@ -5,6 +5,10 @@ from typing import AsyncGenerator
 from ..core.interfaces.document_processor import DocumentProcessor
 from ..core.models.document import Document, Chunk, ProcessingStatus
 from ..pipeline.chunking.base_chunker import BaseChunker
+from ..utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 class CSVProcessor(DocumentProcessor):
     def __init__(self, chunker: BaseChunker):

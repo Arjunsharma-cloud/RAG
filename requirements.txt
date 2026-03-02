@@ -1,0 +1,10 @@
+pypdf
+pandas>=2.2.0
+numpy>=1.26.4
+pillow
+sentence-transformers
+chromadb
+aiohttp
+pyyaml
+python-dotenv
+emoji
